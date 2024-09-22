@@ -1,0 +1,17 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.89"
+itertools = "0.13.0"
+rand = "0.8.5"
+reqwest = "0.12.7"
+serde = "1.0.210"
+serde_json = "1.0.128"
+thiserror = "1.0.63"
+tokio = { version = "1.40.0", features = ["full"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+tyche = "0.2.0"
