@@ -1,12 +1,13 @@
 mod http;
 
-use std::{collections::HashMap, io};
-
+use crate::http::{Response, Status};
 use anyhow::anyhow;
 use http::{Method, Request};
+use std::collections::HashMap;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::{
 	io::{AsyncBufRead, BufStream},
-	net::{TcpListener, TcpStream},
+	net::TcpListener,
 };
 use tracing::info;
 
@@ -25,15 +26,16 @@ async fn parse_request(mut stream: impl AsyncBufRead + Unpin) -> anyhow::Result<
 		.ok_or(anyhow!("Missing path"))
 		.map(&str::to_string)?;
 
+	let mut headers = HashMap::new();
 	loop {
-		line_buffer.clear();
-		stream.read_line(&mut line_buffer).await?;
+		buffer.clear();
+		stream.read_line(&mut buffer).await?;
 
-		if line_buffer.is_empty() || line_buffer == "\n" || line_buffer == "\r\n" {
+		if buffer.is_empty() || buffer == "\n" || buffer == "\r\n" {
 			break;
 		}
 
-		let mut comps = line_buffer.split(":");
+		let mut comps = buffer.split(":");
 		let key = comps.next().ok_or(anyhow::anyhow!("missing header name"))?;
 		let value = comps
 			.next()
@@ -43,13 +45,14 @@ async fn parse_request(mut stream: impl AsyncBufRead + Unpin) -> anyhow::Result<
 		headers.insert(key.to_string(), value.to_string());
 	}
 
-	line_buffer.clear();
+	buffer.clear();
+	stream.read_to_string(&mut buffer).await?;
 
 	Ok(Request {
 		method,
 		path,
 		headers,
-		body,
+		body: buffer,
 	})
 }
 
@@ -76,11 +79,15 @@ async fn main() -> anyhow::Result<()> {
 			info!(?addr, "new connection");
 
 			match parse_request(&mut stream).await {
-				Ok(req) => info!(?req, "incoming request"),
+				Ok(req) => {
+					info!(?req, "incoming request");
+					let resp = Response::from_json(Status::Ok, serde_json::to_value(req)?);
+					resp.write(&mut stream).await?;
+				}
 				Err(err) => info!(?err, "Failed to parse request"),
 			}
-		})
-	}
 
-	Ok(())
+			anyhow::Ok(())
+		});
+	}
 }
